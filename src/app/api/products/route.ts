@@ -2,8 +2,13 @@ import prisma from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const products = await prisma.product.findMany();
-  return NextResponse.json(products);
+  try {
+    const products = await prisma.product.findMany();
+    return NextResponse.json(products);
+  } catch (e: any) {
+    console.error("DB ERROR:", e.message, e.code);
+    return NextResponse.json({ error: e.message, code: e.code }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {
