@@ -3,20 +3,28 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 
 const empty = { name: "", price: "", stock: "", barcode: "" };
 
 export default function AdminPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [products, setProducts] = useState<any[]>([]);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
 
+  useEffect(() => {
+    if (status === "unauthenticated") router.replace("/login");
+  }, [status, router]);
+
   const load = () => fetch("/api/products").then(r => r.json()).then(setProducts);
   useEffect(() => { load(); }, []);
+
+  if (status === "loading" || !session) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

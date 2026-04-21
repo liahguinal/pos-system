@@ -2,13 +2,21 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 
 export default function ReportsPage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (status === "unauthenticated") router.replace("/login");
+  }, [status, router]);
 
   const load = async (d: string) => {
     setLoading(true);
@@ -18,6 +26,8 @@ export default function ReportsPage() {
   };
 
   useEffect(() => { load(date); }, []);
+
+  if (status === "loading" || !session) return null;
 
   return (
     <div className="min-h-screen bg-gray-100">

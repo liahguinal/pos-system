@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSession, signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import Receipt from "@/components/Receipt";
 import Logo from "@/components/Logo";
 
 const BarcodeScanner = dynamic(() => import("@/components/BarcodeScanner"), { ssr: false });
 
 export default function POS() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [products, setProducts] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
   const [payment, setPayment] = useState(0);
@@ -18,12 +20,20 @@ export default function POS() {
   const [scanError, setScanError] = useState("");
   const [receipt, setReceipt] = useState<any>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
-
   const [now, setNow] = useState("");
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.replace("/login");
+    }
+  }, [status, router]);
+
   useEffect(() => {
     setNow(new Date().toLocaleString("en-PH"));
     fetch("/api/products").then(r => r.json()).then(setProducts);
   }, []);
+
+  if (status === "loading" || !session) return null;
 
   const addToCart = (product: any) => {
     setScanError("");
