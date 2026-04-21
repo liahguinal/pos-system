@@ -15,7 +15,12 @@ export default function AdminPage() {
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/login");
@@ -31,14 +36,14 @@ export default function AdminPage() {
     setLoading(true);
     const body = { name: form.name, price: parseFloat(form.price), stock: parseInt(form.stock), barcode: form.barcode || null };
     if (editId !== null) {
-      await fetch(`/api/products/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      setMsg("Product updated.");
+      if (!confirm(`Save changes to "${form.name}"?`)) { setLoading(false); return; }
+      const res = await fetch(`/api/products/${editId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      showToast(res.ok ? "Product updated successfully." : "Failed to update product.", res.ok ? "success" : "error");
     } else {
-      await fetch("/api/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      setMsg("Product added.");
+      const res = await fetch("/api/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      showToast(res.ok ? "Product added successfully." : "Failed to add product.", res.ok ? "success" : "error");
     }
     setForm(empty); setEditId(null); setLoading(false); load();
-    setTimeout(() => setMsg(""), 2500);
   };
 
   const handleEdit = (p: any) => {
@@ -46,9 +51,10 @@ export default function AdminPage() {
     setForm({ name: p.name, price: String(p.price), stock: String(p.stock), barcode: p.barcode ?? "" });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Delete this product?")) return;
-    await fetch(`/api/products/${id}`, { method: "DELETE" });
+  const handleDelete = async (id: number, name: string) => {
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+    showToast(res.ok ? "Product deleted." : "Failed to delete product.", res.ok ? "success" : "error");
     load();
   };
 
@@ -56,6 +62,13 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded shadow-lg text-sm font-medium text-white transition-all ${toast.type === "success" ? "bg-[#2f6b57]" : "bg-red-500"}`}>
+          <span>{toast.type === "success" ? "✓" : "✕"}</span>
+          {toast.msg}
+        </div>
+      )}
       <header className="bg-[#2f6b57] text-white px-5 py-2.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Logo />
@@ -96,7 +109,6 @@ export default function AdminPage() {
               <label className="text-xs text-gray-500 font-semibold">Barcode (optional)</label>
               <input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className={inputCls} />
             </div>
-            {msg && <p className="text-[#2f6b57] text-xs font-medium">{msg}</p>}
             <div className="flex gap-2 pt-1">
               <button type="submit" disabled={loading} className="flex-1 bg-[#2f6b57] hover:bg-[#1e4a3a] text-white py-2 rounded text-sm font-semibold disabled:opacity-50 transition">
                 {editId !== null ? "Update" : "Add Product"}
@@ -136,7 +148,7 @@ export default function AdminPage() {
                   <td className="px-4 py-2.5 text-center">
                     <div className="flex gap-1.5 justify-center">
                       <button onClick={() => handleEdit(p)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs font-medium transition">Edit</button>
-                      <button onClick={() => handleDelete(p.id)} className="bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1 rounded text-xs font-medium transition">Delete</button>
+                      <button onClick={() => handleDelete(p.id, p.name)} className="bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1 rounded text-xs font-medium transition">Delete</button>
                     </div>
                   </td>
                 </tr>
