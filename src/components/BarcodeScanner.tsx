@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
 
 interface Props {
   onScan: (code: string) => void;
@@ -10,32 +10,57 @@ interface Props {
 
 export default function BarcodeScanner({ onScan, onClose }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<{ stop: () => void } | null>(null);
-  const scannedRef = useRef(false);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animRef = useRef<number | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const reader = new BrowserMultiFormatReader();
+    let stopped = false;
 
-    reader
-      .decodeFromVideoDevice(undefined, videoRef.current!, (result, _err, controls) => {
-        if (!controlsRef.current) controlsRef.current = controls;
-        if (result && !scannedRef.current) {
-          scannedRef.current = true;
-          controls.stop();
-          onScan(result.getText());
-        }
+    navigator.mediaDevices
+      .getUserMedia({ video: { facingMode: "environment" } })
+      .then((stream) => {
+        streamRef.current = stream;
+        const video = videoRef.current;
+        if (!video) return;
+
+        video.srcObject = stream;
+        video.setAttribute("playsinline", "true");
+
+        video.onloadedmetadata = () => {
+          const startScan = () => {
+            const scan = () => {
+              if (stopped) return;
+              try {
+                const result = reader.decodeFromVideoElement(video);
+                if (result && !stopped) {
+                  stopped = true;
+                  onScan(result.getText());
+                }
+              } catch (e) {
+                if (!(e instanceof NotFoundException)) {
+                  // ignore not-found
+                }
+              }
+              animRef.current = requestAnimationFrame(scan);
+            };
+            animRef.current = requestAnimationFrame(scan);
+          };
+
+          if (video.paused) {
+            video.play().then(startScan).catch(startScan);
+          } else {
+            startScan();
+          }
+        };
       })
-      .catch((err) => {
-        // Ignore AbortError from video play interruption
-        if (err?.name !== "AbortError") {
-          setError("Camera access denied or not available.");
-        }
-      });
+      .catch(() => setError("Camera access denied or not available."));
 
     return () => {
-      scannedRef.current = true;
-      controlsRef.current?.stop();
+      stopped = true;
+      if (animRef.current) cancelAnimationFrame(animRef.current);
+      streamRef.current?.getTracks().forEach(t => t.stop());
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -49,7 +74,7 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
         {error ? (
           <p className="text-red-500 text-sm">{error}</p>
         ) : (
-          <video ref={videoRef} className="w-full rounded" />
+          <video ref={videoRef} className="w-full rounded" muted playsInline />
         )}
         <p className="text-xs text-gray-400 mt-2 text-center">Point camera at barcode</p>
       </div>
