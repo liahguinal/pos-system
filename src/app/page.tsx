@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useSession, signOut } from "next-auth/react";
 import Receipt from "@/components/Receipt";
 import Logo from "@/components/Logo";
 
 const BarcodeScanner = dynamic(() => import("@/components/BarcodeScanner"), { ssr: false });
 
 export default function POS() {
+  const { data: session } = useSession();
   const [products, setProducts] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
   const [payment, setPayment] = useState(0);
@@ -103,9 +105,11 @@ export default function POS() {
             <p className="text-xs text-white/70">Point of Sale</p>
           </div>
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-2 text-xs items-center">
+          <span className="text-white/60 text-xs hidden sm:block">👤 {session?.user?.name}</span>
           <a href="/admin" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">Admin</a>
           <a href="/reports" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">Reports</a>
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="border border-white/40 hover:bg-red-500/30 text-white px-3 py-1.5 rounded font-medium transition">Logout</button>
         </div>
       </header>
 

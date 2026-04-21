@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { signOut, useSession } from "next-auth/react";
 import Logo from "@/components/Logo";
 
 const empty = { name: "", price: "", stock: "", barcode: "" };
 
 export default function AdminPage() {
+  const { data: session } = useSession();
   const [products, setProducts] = useState<any[]>([]);
   const [form, setForm] = useState(empty);
   const [editId, setEditId] = useState<number | null>(null);
@@ -54,9 +56,11 @@ export default function AdminPage() {
             <p className="text-xs text-white/70">Product Management</p>
           </div>
         </div>
-        <div className="flex gap-2 text-xs">
+        <div className="flex gap-2 text-xs items-center">
+          <span className="text-white/60 text-xs hidden sm:block">👤 {session?.user?.name}</span>
           <Link href="/" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">POS</Link>
           <Link href="/reports" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">Reports</Link>
+          <button onClick={() => signOut({ callbackUrl: "/login" })} className="border border-white/40 hover:bg-red-500/30 text-white px-3 py-1.5 rounded font-medium transition">Logout</button>
         </div>
       </header>
 
