@@ -36,7 +36,7 @@ export default function BarcodeScanner({ onScan, onClose }: Props) {
                 const result = reader.decodeFromVideoElement(video);
                 if (result && !stopped) {
                   stopped = true;
-                  onScan(result.getText());
+                  Promise.resolve(result).then(r => onScan((r as any).getText()));
                 }
               } catch (e) {
                 if (!(e instanceof NotFoundException)) {

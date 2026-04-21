@@ -11,7 +11,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.username || !credentials?.password) return null;
 
-        // Dynamic import so Prisma only loads in Node.js runtime, not Edge
+        // Dynamic imports keep Prisma out of the Edge bundle
         const { default: prisma } = await import("@/lib/prisma");
         const bcrypt = await import("bcryptjs");
 
