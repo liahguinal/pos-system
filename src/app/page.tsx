@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import Receipt from "@/components/Receipt";
+import Logo from "@/components/Logo";
 
-const BarcodeScanner = dynamic(() => import("@/components/BarcodeScanner"), {
-  ssr: false,
-});
+const BarcodeScanner = dynamic(() => import("@/components/BarcodeScanner"), { ssr: false });
 
 export default function POS() {
   const [products, setProducts] = useState<any[]>([]);
@@ -14,196 +14,243 @@ export default function POS() {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [showScanner, setShowScanner] = useState(false);
   const [scanError, setScanError] = useState("");
+  const [receipt, setReceipt] = useState<any>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
 
+  const [now, setNow] = useState("");
   useEffect(() => {
-    fetch("/api/products")
-      .then((res) => res.json())
-      .then((data) => setProducts(data));
+    setNow(new Date().toLocaleString("en-PH"));
+    fetch("/api/products").then(r => r.json()).then(setProducts);
   }, []);
 
   const addToCart = (product: any) => {
     setScanError("");
-    setCart((prev) => {
-      const existing = prev.find((p) => p.id === product.id);
-      if (existing) {
-        return prev.map((p) =>
-          p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p
-        );
-      }
+    setCart(prev => {
+      const existing = prev.find(p => p.id === product.id);
+      if (existing) return prev.map(p => p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p);
       return [...prev, { ...product, quantity: 1 }];
     });
   };
 
-  const removeFromCart = (id: number) => {
-    setCart((prev) => prev.filter((p) => p.id !== id));
+  const updateQty = (id: number, qty: number) => {
+    if (qty <= 0) return setCart(prev => prev.filter(p => p.id !== id));
+    setCart(prev => prev.map(p => p.id === id ? { ...p, quantity: qty } : p));
   };
 
   const lookupBarcode = async (code: string) => {
     if (!code.trim()) return;
     setScanError("");
 
+    // Try barcode first
     const res = await fetch(`/api/products/barcode/${code.trim()}`);
     if (res.ok) {
-      const product = await res.json();
-      addToCart(product);
+      addToCart(await res.json());
+      setBarcodeInput("");
+      barcodeRef.current?.focus();
+      return;
+    }
+
+    // Fallback: match by product name (exact or starts with)
+    const match = products.find(p =>
+      p.name.toLowerCase() === code.trim().toLowerCase() ||
+      p.name.toLowerCase().startsWith(code.trim().toLowerCase())
+    );
+    if (match) {
+      addToCart(match);
       setBarcodeInput("");
       barcodeRef.current?.focus();
     } else {
-      setScanError(`No product found for barcode: ${code}`);
+      setScanError(`No product found for: ${code}`);
     }
   };
 
-  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") lookupBarcode(barcodeInput);
-  };
-
-  const handleCameraScan = (code: string) => {
-    setShowScanner(false);
-    lookupBarcode(code);
-  };
-
-  const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const change = payment - total;
-
   const checkout = async () => {
-    if (cart.length === 0) return;
-    await fetch("/api/sales", {
+    if (!cart.length || payment < total) return;
+    const res = await fetch("/api/sales", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: cart, total, payment, change }),
     });
-    alert("Sale completed!");
+    setReceipt(await res.json());
+  };
+
+  const resetTransaction = () => {
+    setReceipt(null);
     setCart([]);
     setPayment(0);
+    fetch("/api/products").then(r => r.json()).then(setProducts);
     barcodeRef.current?.focus();
   };
 
+  const total = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+  const change = payment - total;
+  const filtered = products.filter(p =>
+    p.name.toLowerCase().includes(barcodeInput.toLowerCase()) ||
+    (p.barcode && p.barcode.includes(barcodeInput))
+  );
+  const lowStock = products.filter(p => p.stock > 0 && p.stock <= 5);
+  const outOfStock = products.filter(p => p.stock === 0);
+
   return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="max-w-6xl mx-auto grid grid-cols-3 gap-4">
+    <div className="h-screen flex flex-col bg-gray-100 overflow-hidden">
 
-        {/* Left: Products + Barcode */}
-        <div className="col-span-2 space-y-4">
-
-          {/* Barcode input */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h2 className="font-semibold mb-2">Scan / Enter Barcode</h2>
-            <div className="flex gap-2">
-              <input
-                ref={barcodeRef}
-                type="text"
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                onKeyDown={handleBarcodeKeyDown}
-                placeholder="Scan or type barcode, press Enter"
-                className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                autoFocus
-              />
-              <button
-                onClick={() => lookupBarcode(barcodeInput)}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600"
-              >
-                Search
-              </button>
-              <button
-                onClick={() => setShowScanner(true)}
-                className="bg-gray-700 text-white px-4 py-2 rounded-lg text-sm hover:bg-gray-800"
-                title="Use camera"
-              >
-                📷
-              </button>
-            </div>
-            {scanError && (
-              <p className="text-red-500 text-sm mt-2">{scanError}</p>
-            )}
-          </div>
-
-          {/* Product grid */}
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <h2 className="font-semibold mb-3">Products</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {products.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className="p-3 bg-gray-100 rounded-lg text-left hover:bg-blue-50 border border-transparent hover:border-blue-300 transition"
-                >
-                  <p className="font-medium text-sm">{p.name}</p>
-                  <p className="text-blue-600 text-sm">₱{p.price}</p>
-                  <p className="text-gray-400 text-xs">Stock: {p.stock}</p>
-                </button>
-              ))}
-            </div>
+      {/* Header */}
+      <header className="bg-[#2f6b57] text-white px-5 py-2.5 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Logo />
+          <div className="border-l border-white/30 pl-3">
+            <p className="font-bold text-sm">G7RR STORE</p>
+            <p className="text-xs text-white/70">Point of Sale</p>
           </div>
         </div>
+        <div className="flex gap-2 text-xs">
+          <a href="/admin" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">Admin</a>
+          <a href="/reports" className="border border-white/40 hover:bg-white/10 text-white px-3 py-1.5 rounded font-medium transition">Reports</a>
+        </div>
+      </header>
 
-        {/* Right: Cart */}
-        <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col gap-3 h-fit">
-          <h2 className="font-semibold text-lg">Cart</h2>
+      <div className="flex flex-1 overflow-hidden">
 
-          {cart.length === 0 ? (
-            <p className="text-gray-400 text-sm">No items yet</p>
-          ) : (
-            <div className="space-y-2">
-              {cart.map((item) => (
-                <div key={item.id} className="flex justify-between items-center text-sm">
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-gray-500">x{item.quantity} × ₱{item.price}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold">₱{(item.price * item.quantity).toFixed(2)}</span>
-                    <button
-                      onClick={() => removeFromCart(item.id)}
-                      className="text-red-400 hover:text-red-600 text-xs"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
+        {/* Left — Products */}
+        <div className="flex-1 flex flex-col overflow-hidden border-r border-gray-200">
+
+          {/* Low stock banner */}
+          {(lowStock.length > 0 || outOfStock.length > 0) && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex gap-4 text-xs shrink-0">
+              {lowStock.length > 0 && (
+                <span className="text-amber-700 font-medium">
+                  ⚠ Low stock: {lowStock.map(p => `${p.name} (${p.stock})`).join(", ")}
+                </span>
+              )}
+              {outOfStock.length > 0 && (
+                <span className="text-red-600 font-medium">
+                  ✕ Out of stock: {outOfStock.map(p => p.name).join(", ")}
+                </span>
+              )}
             </div>
           )}
 
-          <hr />
-
-          <div className="flex justify-between font-semibold">
-            <span>Total</span>
-            <span>₱{total.toFixed(2)}</span>
+          {/* Toolbar */}
+          <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex gap-2 shrink-0">
+            <input
+              ref={barcodeRef}
+              type="text"
+              value={barcodeInput}
+              onChange={e => setBarcodeInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && lookupBarcode(barcodeInput)}
+              placeholder="Search by name, barcode, or scan..."
+              className="flex-1 border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-[#2f6b57]"
+              autoFocus
+            />
+            <button onClick={() => lookupBarcode(barcodeInput)} className="bg-[#2f6b57] text-white px-3 py-1.5 rounded text-sm hover:bg-[#1e4a3a]">Search</button>
+            <button onClick={() => setShowScanner(true)} className="bg-gray-700 text-white px-3 py-1.5 rounded text-sm hover:bg-gray-800">Camera</button>
           </div>
 
-          <input
-            type="number"
-            placeholder="Payment amount"
-            value={payment || ""}
-            onChange={(e) => setPayment(Number(e.target.value))}
-            className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-          />
+          {scanError && (
+            <div className="bg-red-50 border-b border-red-200 text-red-600 text-xs px-4 py-2 shrink-0">{scanError}</div>
+          )}
 
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Change</span>
-            <span className={change < 0 ? "text-red-500" : "text-green-600"}>
-              ₱{change.toFixed(2)}
-            </span>
+          {/* Product grid */}
+          <div className="flex-1 overflow-y-auto p-3 grid grid-cols-4 gap-2 content-start">
+            {filtered.map(p => (
+              <button
+                key={p.id}
+                onClick={() => addToCart(p)}
+                disabled={p.stock === 0}
+                className="bg-white border border-gray-200 rounded p-3 text-left hover:border-[#2f6b57] hover:bg-green-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <p className="font-semibold text-sm text-gray-800 truncate">{p.name}</p>
+                <p className="text-[#2f6b57] font-bold text-sm mt-1">₱{p.price.toFixed(2)}</p>
+                <p className={`text-xs mt-1 ${p.stock < 5 ? "text-red-500" : "text-gray-400"}`}>
+                  Stock: {p.stock}
+                </p>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="col-span-4 text-center text-gray-400 text-sm py-10">No products found</p>
+            )}
+          </div>
+        </div>
+
+        {/* Right — Cart */}
+        <div className="w-72 bg-white flex flex-col shrink-0">
+
+          <div className="bg-[#2f6b57] text-white px-4 py-2.5 shrink-0">
+            <p className="font-bold text-sm">CURRENT TRANSACTION</p>
+            <p className="text-xs text-white/70">{now}</p>
           </div>
 
-          <button
-            onClick={checkout}
-            disabled={cart.length === 0 || payment < total}
-            className="bg-green-500 text-white py-2 rounded-lg font-semibold hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Complete Sale
-          </button>
+          {/* Items */}
+          <div className="flex-1 overflow-y-auto">
+            {cart.length === 0 ? (
+              <p className="text-center text-gray-400 text-sm py-10">No items added</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Item</th>
+                    <th className="px-2 py-2 text-center">Qty</th>
+                    <th className="px-3 py-2 text-right">Amt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {cart.map(item => (
+                    <tr key={item.id}>
+                      <td className="px-3 py-2">
+                        <p className="font-medium text-gray-800 text-xs leading-tight">{item.name}</p>
+                        <p className="text-gray-400 text-xs">₱{item.price.toFixed(2)}</p>
+                      </td>
+                      <td className="px-2 py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <button onClick={() => updateQty(item.id, item.quantity - 1)} className="w-5 h-5 border border-gray-300 rounded text-xs hover:bg-gray-100 leading-none">-</button>
+                          <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                          <button onClick={() => updateQty(item.id, item.quantity + 1)} className="w-5 h-5 border border-gray-300 rounded text-xs hover:bg-gray-100 leading-none">+</button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right font-semibold text-xs text-gray-800">
+                        ₱{(item.price * item.quantity).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Totals */}
+          <div className="border-t border-gray-200 p-4 space-y-2.5 shrink-0 bg-gray-50">
+            <div className="flex justify-between text-sm font-bold text-gray-800">
+              <span>TOTAL</span>
+              <span className="text-[#2f6b57] text-base">₱{total.toFixed(2)}</span>
+            </div>
+            <input
+              type="number"
+              placeholder="Cash tendered"
+              value={payment || ""}
+              onChange={e => setPayment(Number(e.target.value))}
+              className="w-full border border-gray-300 rounded px-3 py-2 text-sm text-center font-bold focus:outline-none focus:border-[#2f6b57]"
+            />
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-500">Change</span>
+              <span className={`font-bold ${change < 0 ? "text-red-500" : "text-[#2f6b57]"}`}>
+                ₱{change.toFixed(2)}
+              </span>
+            </div>
+            <button
+              onClick={checkout}
+              disabled={cart.length === 0 || payment < total}
+              className="w-full bg-[#2f6b57] hover:bg-[#1e4a3a] text-white font-bold py-2.5 rounded text-sm disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              COMPLETE SALE
+            </button>
+          </div>
         </div>
       </div>
 
       {showScanner && (
-        <BarcodeScanner
-          onScan={handleCameraScan}
-          onClose={() => setShowScanner(false)}
-        />
+        <BarcodeScanner onScan={code => { setShowScanner(false); lookupBarcode(code); }} onClose={() => setShowScanner(false)} />
       )}
+      {receipt && <Receipt sale={receipt} onClose={resetTransaction} />}
     </div>
   );
 }

@@ -17,15 +17,15 @@ export async function POST(req: Request) {
         })),
       },
     },
+    include: {
+      items: { include: { product: true } },
+    },
   });
 
-  // deduct stock
   for (const item of items) {
     await prisma.product.update({
       where: { id: item.id },
-      data: {
-        stock: { decrement: item.quantity },
-      },
+      data: { stock: { decrement: item.quantity } },
     });
   }
 
